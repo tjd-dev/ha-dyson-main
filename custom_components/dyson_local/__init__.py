@@ -30,7 +30,7 @@ from .vendor.libdyson.exceptions import (
 
 from homeassistant.components.zeroconf import async_get_instance
 from homeassistant.config_entries import ConfigEntry, SOURCE_DISCOVERY
-from homeassistant.const import CONF_HOST, EVENT_HOMEASSISTANT_STOP
+from homeassistant.const import CONF_HOST, EVENT_HOMEASSISTANT_STOP, CONF_NAME, CONF_SERIAL
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.entity import Entity
@@ -39,7 +39,6 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .const import (
     CONF_CREDENTIAL,
     CONF_DEVICE_TYPE,
-    CONF_SERIAL,
     DATA_COORDINATORS,
     DATA_DEVICES,
     DATA_DISCOVERY,
@@ -123,10 +122,18 @@ async def async_setup_account(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Dyson from a config entry."""
-    device_type = entry.data[CONF_DEVICE_TYPE]
+    # Get name from entry data or use serial as fallback
+    name = entry.data.get(CONF_NAME, entry.data.get(CONF_SERIAL))
+    
+    try:
+        device_type = entry.data[CONF_DEVICE_TYPE]
+    except KeyError:
+        # Handle missing device_type - could be an older config entry
+        _LOGGER.error("Missing device_type in config entry. Please reconfigure the device")
+        return False
+    
     serial = entry.data[CONF_SERIAL]
     credential = entry.data[CONF_CREDENTIAL]
-    name = entry.data[CONF_NAME]
     
     # Create device instance
     device = get_device(serial, credential, device_type)
