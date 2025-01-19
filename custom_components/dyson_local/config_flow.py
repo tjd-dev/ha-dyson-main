@@ -45,70 +45,27 @@ SETUP_METHODS = {
 }
 
 class DysonLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Dyson config flow."""
+    """Dyson local config flow."""
 
     VERSION = 1
+    CONNECTION_CLASS = config_entries.CONN_CLASS_LOCAL_PUSH
 
-    async def async_step_user(self, user_input=None):
-        """Handle a flow initialized by the user."""
-        if user_input is not None:
-            # For Vis Nav, force cloud setup
-            if self.device_info and self.device_info.product_type == "277":
+    def __init__(self):
+        """Initialize the config flow."""
+        self._device_info = None
+
+    async def async_step_user(self, info: Optional[dict] = None):
+        """Handle step initialized by user."""
+        if info is not None:
+            if info[CONF_METHOD] == "wifi":
+                return await self.async_step_wifi()
+            if info[CONF_METHOD] == "cloud":
                 return await self.async_step_cloud()
-            
-            return self.async_show_form(
-                step_id="method",
-                data_schema=vol.Schema({
-                    vol.Required(CONF_METHOD): vol.In(SETUP_METHODS),
-                }),
-            )
+            return await self.async_step_manual()
 
         return self.async_show_form(
             step_id="user",
-            data_schema=vol.Schema({
-                vol.Required(CONF_REGION): vol.In(REGIONS),
-            }),
-        )
-
-    async def async_step_cloud(self, user_input=None):
-        """Handle cloud setup step."""
-        errors = {}
-        if user_input is not None:
-            try:
-                device_info = self.device_info
-                
-                # Create config entry data
-                data = {
-                    CONF_SERIAL: device_info.serial,
-                    CONF_CREDENTIAL: device_info.credential,
-                    CONF_DEVICE_TYPE: device_info.product_type,
-                    CONF_NAME: device_info.name,
-                }
-                
-                # For Vis Nav, always include IoT details
-                if device_info.product_type == "277":
-                    if not device_info.iot_details:
-                        raise DysonException("IoT details required for Vis Nav")
-                    data["iot_details"] = device_info.iot_details
-
-                return self.async_create_entry(
-                    title=f"{device_info.name} ({device_info.serial})",
-                    data=data,
-                )
-            except DysonException as err:
-                _LOGGER.error("Failed to connect to device: %s", err)
-                errors["base"] = "cannot_connect"
-
-        return self.async_show_form(
-            step_id="cloud",
-            errors=errors,
-            description_placeholders={
-                "model": "360 Vis Nav" if self.device_info.product_type == "277" else "device"
-            },
-            data_schema=vol.Schema({
-                vol.Required(CONF_EMAIL): str,
-                vol.Required(CONF_PASSWORD): str,
-            }),
+            data_schema=vol.Schema({vol.Required(CONF_METHOD): vol.In(SETUP_METHODS)}),
         )
 
     async def async_step_wifi(self, info: Optional[dict] = None):
@@ -160,6 +117,24 @@ class DysonLocalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 }
             ),
             errors=errors,
+        )
+
+    async def async_step_cloud(self, info: Optional[dict] = None):
+        if info is not None:
+            self._region = info[CONF_REGION]
+            if self._region == "CN":
+                return await self.async_step_mobile()
+            return await self.async_step_email()
+
+        region_names = {
+            code: f"{name} ({code})"
+            for code, name in REGIONS.items()
+        }
+        return self.async_show_form(
+            step_id="cloud",
+            data_schema=vol.Schema({
+                vol.Required(CONF_REGION): vol.In(region_names)
+            }),
         )
 
     async def async_step_email(self, info: Optional[dict]=None):
